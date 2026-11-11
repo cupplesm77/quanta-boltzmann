@@ -67,10 +67,10 @@ _ = run_simulation(warmup, 10)
 
 
 # Primary Simulation Loop: Run Multiple Simulations
-sim_runs = 3
+sim_runs = 1
 run_times = []
-inc = 100_000
-# inc = 0
+# inc = 100_000
+inc = 0
 
 for run in range(sim_runs):
 
@@ -78,7 +78,7 @@ for run in range(sim_runs):
     start_time = perf_counter()
 
     boltz_array = boltz_array0.copy()
-    boltz_seed += run
+    run_seed = boltz_seed  + run
 
     print("")
     print("CHECK: Beginning run:", run)
@@ -90,7 +90,7 @@ for run in range(sim_runs):
     boltz_array = run_simulation(
         boltz_array,
         num_iterations,
-        seed=boltz_seed
+        seed=run_seed
     )
     num_iterations += inc
 

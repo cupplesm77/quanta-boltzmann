@@ -110,7 +110,8 @@ Eventually repeat the experiment using very different starting configurations, f
 3. Random distribution
 4. Spatially clustered distribution
 
-If these different initial states all evolve toward the same equilibrium statistics, this provides strong evidence that the simulation has lost memory of its initial condition.
+If these different initial states all evolve toward the same equilibrium statistics, this provides strong evidence 
+that the simulation has lost memory of its initial condition.
 
 ---
 
@@ -119,7 +120,8 @@ If these different initial states all evolve toward the same equilibrium statist
 Two questions must eventually be distinguished:
 
 1. **Equilibration time:** How long should the initial transient ("burn-in") be discarded?
-2. **Sampling interval:** Once equilibrium has been reached, how widely separated should measurements be to obtain substantially independent samples?
+2. **Sampling interval:** Once equilibrium has been reached, how widely separated should measurements be to obtain 
+substantially independent samples?
 
 The second question requires investigation of autocorrelation times.
 
@@ -177,6 +179,8 @@ D(t) = (1/2) * sum_n |p_n(t) - p_n(eq)|
 M = Lx * Ly
 
 
-That should keep the notes immediately readable both as raw Markdown and when rendered, while still making the mathematical meaning unambiguous.
+That should keep the notes immediately readable both as raw Markdown and when rendered, while still making the 
+mathematical meaning unambiguous.
 
-The substance is unchanged; the main change is replacing display LaTeX with compact ASCII notation suitable for your simulation development notes.
+The substance is unchanged; the main change is replacing display LaTeX with compact ASCII notation suitable for 
+your simulation development notes.

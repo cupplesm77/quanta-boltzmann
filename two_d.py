@@ -14,7 +14,49 @@ def run_simulation_with_snapshots(
         snapshot_iterations,
         seed=boltz_seed,
 ):
-    """Run one trajectory and save the 2-D state at selected iterations."""
+    """
+    Simulate random energy quanta exchange on a 2D lattice with snapshot logging.
+
+    This function models the relaxation of an isolated system of discrete
+    harmonic oscillators (an Einstein solid) toward statistical equilibrium.
+    At each iteration, energy is conserved through pairwise random exchange:
+    a donor site is chosen uniformly at random and, if it possesses at least
+    one quantum (E >= 1), transfers one quantum to a randomly chosen receiver
+    site. Over many iterations, random exchanges maximize system entropy and
+    drive the single-site occupancy distribution toward the Boltzmann
+    (geometric) distribution.
+
+    Parameters
+    ----------
+    boltz_array : numpy.ndarray
+        2D integer array of shape (Lx, Ly) representing the initial lattice
+        microstate, where each element stores the number of energy quanta at
+        that site. This array is modified in-place during the simulation.
+    snapshot_iterations : numpy.ndarray
+        1D integer array of strictly increasing iteration counts (1-based)
+        at which to record snapshots of the 2D lattice configuration.
+    seed : int, optional
+        Seed for the random number generator to ensure reproducible
+        simulation trajectories. Default is `boltz_seed`.
+
+    Returns
+    -------
+    boltz_array : numpy.ndarray
+        The modified 2D lattice array representing the final microstate of the
+        system after the last requested iteration.
+    snapshots : numpy.ndarray
+        3D integer array of shape (N, Lx, Ly), where N is the number of
+        requested checkpoints, containing copies of the 2D lattice state
+        captured at each iteration in `snapshot_iterations`.
+
+    Notes
+    -----
+    - Physical Conservation: Total quanta Q = sum(boltz_array) and lattice
+      size M = Lx * Ly are strictly conserved throughout the simulation.
+    - Global Exchange: Energy transfers occur between any two sites across
+      the entire lattice (mean-field interaction), rather than strictly nearest
+      neighbors, enabling rapid mixing and relaxation toward equilibrium.
+    """
     np.random.seed(seed)
 
     # flat is a view of the same data, not a separate physical system.
@@ -23,8 +65,8 @@ def run_simulation_with_snapshots(
     array_length = flat.size
 
     snapshots = np.empty(
-                        (snapshot_iterations.size, boltz_array.shape[0], boltz_array.shape[1]),
-                         dtype=boltz_array.dtype,
+        (snapshot_iterations.size, boltz_array.shape[0], boltz_array.shape[1]),
+        dtype=boltz_array.dtype,
     )
 
     snapshot_index = 0
@@ -52,8 +94,42 @@ def run_simulation_with_snapshots(
 
 
 def initialize_boltzmann(Q, Lx, Ly):
-    """Distribute Q quanta approximately uniformly over an Lx by Ly array.
+    """
+    Distribute energy quanta across a 2D lattice in a uniform, low-entropy state.
 
+    Calculates the base number of quanta per site q = Q // M and remainder
+    r = Q % M for a lattice of total size M = Lx * Ly. Every site receives at
+    least q quanta, and the remaining r quanta are dispersed as evenly as
+    possible across the lattice sites. This creates a deterministic, minimally
+    disordered initial configuration for studying relaxation toward statistical
+    equilibrium.
+
+    Parameters
+    ----------
+    Q : int
+        Total number of discrete energy quanta to distribute across the lattice.
+    Lx : int
+        Number of lattice rows (dimension along the first axis).
+    Ly : int
+        Number of lattice columns (dimension along the second axis).
+
+    Returns
+    -------
+    boltzmann : numpy.ndarray
+        2D integer array of shape (Lx, Ly) and dtype `numpy.int64` representing
+        the initial lattice microstate with sum(boltzmann) == Q.
+
+    Notes
+    -----
+    - Statistical Mechanics Context: Initializing the system with a nearly
+      uniform distribution (minimal variance in local energy) establishes a
+      low-entropy microstate. As the simulation runs, random exchanges increase
+      entropy until the single-site occupancies reach the Boltzmann (geometric)
+      distribution.
+    - Uniform Remainder Spacing: When Q is not an exact multiple of M, the r
+      excess quanta are assigned to flattened 1D indices `(k * M) // r` for
+      `k = 0, 1, ..., r - 1`, ensuring balanced spatial dispersal across the
+      lattice.
     """
     # Count the number of oscillators, M = Lx * Ly .
     M = Lx * Ly
@@ -71,6 +147,8 @@ def initialize_boltzmann(Q, Lx, Ly):
         # Choose r roughly evenly spaced sites and give each one additional quantum.
         indices = (np.arange(r) * M) // r
         flat[indices] += 1
+
+    assert boltzmann.sum() == Q
 
     return boltzmann
 
@@ -175,9 +253,13 @@ for run in range(sim_runs):
     colorbar.set_label("Quanta at site n(x, y)")
     fig.suptitle(f"One 2-D relaxation trajectory: {Lx} x {Ly}, Q = {Q:,}")
 
+
     # Occupation-number distribution of the final 2-D microstate.
     counts = np.bincount(boltz_array.ravel())
     values = np.arange(counts.size)
+
+    # assume Poisson statistic on counts
+    sigma_poisson = np.sqrt(counts)
 
     print("counts =", counts)
     print("values =", values)
@@ -190,9 +272,17 @@ for run in range(sim_runs):
     occupied = counts > 0
     values_to_plot = values[occupied]
     counts_to_plot = counts[occupied]
+    sigma_poisson_to_plot = sigma_poisson[occupied]
 
     fig2, ax = plt.subplots()
-    ax.plot(values_to_plot, counts_to_plot, marker="o", linestyle="None")
+    ax.errorbar(
+        values_to_plot,
+        counts_to_plot,
+        yerr=sigma_poisson_to_plot,
+        marker="o",
+        linestyle="None",
+        capsize=3,
+    )
     ax.set_yscale("log")
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_xlabel("Number (n) of particles at a site")

@@ -263,6 +263,7 @@ for run in range(sim_runs):
 
     print("counts =", counts)
     print("values =", values)
+    print("sigma_poisson =", np.sqrt(counts))
     print()
 
     # Strong conservation of quanta from the occupation distribution.

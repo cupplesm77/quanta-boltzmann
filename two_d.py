@@ -1,113 +1,142 @@
-# statistical nature of the boltzmann distribution
-
+# Statistical nature of the Boltzmann distribution on a 2-D lattice
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 from numba import njit
 from time import perf_counter
+
 boltz_seed = 78781
 
+
 @njit
-def run_simulation(boltz_array, num_iterations, seed=boltz_seed):
+def run_simulation_with_snapshots(
+                                  boltz_array,
+                                  snapshot_iterations,
+                                  seed=boltz_seed,
+                                  ):
+    """Run one trajectory and save the 2-D state at selected iterations."""
     np.random.seed(seed)
 
-    array_length = boltz_array.size
+    # flat is a view of the same data, not a separate physical system.
+    # This preserves the original global-transfer dynamics.
+    flat = boltz_array.ravel()
+    array_length = flat.size
 
-    for _ in range(num_iterations):
+    snapshots = np.empty(
+                        (snapshot_iterations.size, boltz_array.shape[0], boltz_array.shape[1]),
+                         dtype=boltz_array.dtype,
+    )
 
-        # Faster and clearer than np.random.choice(range(...))
+    snapshot_index = 0
+    final_iteration = snapshot_iterations[-1]
+
+    for iteration in range(1, final_iteration + 1):
         index1 = np.random.randint(array_length)
 
-        # A transfer is possible only if this site is occupied
-        if boltz_array[index1] > 0:
-
+        # A transfer is possible only if the source site is occupied.
+        if flat[index1] > 0:
             index2 = np.random.randint(array_length)
 
-            # Do nothing if both indices refer to the same site
+            # Do nothing if both indices refer to the same site.
             if index2 != index1:
-                boltz_array[index1] -= 1
-                boltz_array[index2] += 1
+                flat[index1] -= 1
+                flat[index2] += 1
 
-    return boltz_array
+        if iteration == snapshot_iterations[snapshot_index]:
+            snapshots[snapshot_index, :, :] = boltz_array
+            snapshot_index += 1
+            if snapshot_index == snapshot_iterations.size:
+                break
 
-# boltzmann array initialization routine
-def initialize_boltzmann(Q, M):
+    return boltz_array, snapshots
+
+
+def initialize_boltzmann(Q, Lx, Ly):
+    """Distribute Q quanta approximately uniformly over an Lx by Ly array."""
+    M = Lx * Ly
     q, r = divmod(Q, M)
 
-    # Give every lattice point q quanta
-    boltzmann = np.full(M, q, dtype=np.int64)
+    # Give every lattice point q quanta.
+    boltzmann = np.full((Lx, Ly), q, dtype=np.int64)
 
-    # Spread the remaining r quanta approximately uniformly
+    # Spread any remaining quanta approximately uniformly using a flat view.
     if r > 0:
+        flat = boltzmann.ravel()
         indices = (np.arange(r) * M) // r
-        boltzmann[indices] += 1
+        flat[indices] += 1
 
     return boltzmann
 
 
-M = 100_000  # number of lattice sites
-Q = 100_000  # total number of energy quanta
+# Lattice geometry and conserved total
+Lx = 25
+Ly = 25
+M = Lx * Ly
+Q = M                         # density rho = Q/M = 1
 
 million = 1_000_000
-num_iterations = 10 * million
+snapshot_iterations = np.array(
+                              [1_00, 0.001 * million, 0.01 * million, 0.1 * million, million],
+                               dtype=np.int64,
+)
 
-# values are counts of energy quanta at each lattice site, so use an integer dtype
-# boltz_array = np.ones(M, dtype=np.int64)
-
-# Construct an initialization routine that randomly disperses the Q quanta over the M lattice points
-boltz_array0 = initialize_boltzmann(Q, M)
-assert len(boltz_array0) == M
+boltz_array0 = initialize_boltzmann(Q, Lx, Ly)
+assert boltz_array0.shape == (Lx, Ly)
+assert boltz_array0.size == M
 
 initial_total = boltz_array0.sum()
-initial_size = len(boltz_array0)
 
-# For proper timing, warm simulation up first with a tiny run:
-warmup = np.ones(10, dtype=np.int64)
-_ = run_simulation(warmup, 10)
+# Warm up Numba with a tiny 2-D run before timing the primary simulation.
+warmup = np.ones((2, 5), dtype=np.int64)
+warmup_checkpoints = np.array([10], dtype=np.int64)
+_ = run_simulation_with_snapshots(warmup, warmup_checkpoints)
 
-
-# Primary Simulation Loop: Run Multiple Simulations
+# Primary simulation loop. Keep at 1 for the snapshot study.
+# Increase later to compare independent trajectories.
 sim_runs = 1
 run_times = []
-# inc = 100_000
-inc = 0
 
 for run in range(sim_runs):
-
-    # time the simulation run
     start_time = perf_counter()
 
+    # Every run starts from the same pristine initial microstate.
     boltz_array = boltz_array0.copy()
-    run_seed = boltz_seed  + run
+    run_seed = boltz_seed + run
 
-    print("")
+    print()
     print("CHECK: Beginning run:", run)
-    print("CHECK: Initial first 10 sites:", boltz_array[:10])
+    print("CHECK: Initial top-left 2 x 5 block:")
+    print(boltz_array[:2, :5])
+    print("CHECK: Initial shape:", boltz_array.shape)
     print("CHECK: Initial total Q:", boltz_array.sum())
 
-    # add increments of interation to each of the simulation runs
-
-    boltz_array = run_simulation(
-        boltz_array,
-        num_iterations,
-        seed=run_seed
+    boltz_array, evolved_snapshots = run_simulation_with_snapshots(
+                                                                  boltz_array,
+                                                                   snapshot_iterations,
+                                                                   seed=run_seed,
     )
-    num_iterations += inc
 
-    print("")
-    print("CHECK: Final first 10 sites:", boltz_array[:10])
+    # Include the exact initial condition as snapshot zero.
+    snapshots = np.concatenate(
+        (boltz_array0[np.newaxis, :, :], evolved_snapshots),
+        axis=0,
+    )
+    snapshot_labels = ["Initial"] + [f"{n:,} iterations" for n in snapshot_iterations]
+
+    print()
+    print("CHECK: Final top-left 2 x 5 block:")
+    print(boltz_array[:2, :5])
+    print("CHECK: Final shape:", boltz_array.shape)
     print("CHECK: Final total Q:", boltz_array.sum())
-    print("")
+    print()
 
-    # Every successful move subtracts one from one site and adds one to another.
-    # Therefore, the total quanta should remain constant:
-
-    # no lattice points were lost
-    assert len(boltz_array) == M
-    # conservation of quanta (weak)
+    # Geometry and conservation checks
+    assert boltz_array.shape == (Lx, Ly)
+    assert boltz_array.size == M
     assert boltz_array.sum() == Q
-    # no negative lattice values
     assert boltz_array.min() >= 0
+    assert np.all(snapshots.sum(axis=(1, 2)) == Q)
+    assert snapshots.min() >= 0
 
     elapsed_time = perf_counter() - start_time
     run_times.append(elapsed_time)
@@ -118,32 +147,49 @@ for run in range(sim_runs):
     print(f"Minimum value: {boltz_array.min()}")
     print(f"Maximum value: {boltz_array.max()}")
 
-    # Since all the values are nonnegative integers, np.bincount() works nicely
-    counts = np.bincount(boltz_array)
-    print("counts = ", counts)
+    # Plot all spatial snapshots with one common color scale.
+    vmax = snapshots.max()
+    fig, axes = plt.subplots(1, snapshots.shape[0], figsize=(18, 4), constrained_layout=True)
 
-    # Integer population values represented by the positions in counts
+    for ax, state, label in zip(axes, snapshots, snapshot_labels):
+        image = ax.imshow(
+            state,
+            origin="lower",
+            cmap="viridis",
+            vmin=0,
+            vmax=vmax,
+            interpolation="nearest",
+        )
+        ax.set_title(label)
+        ax.set_xlabel("y site")
+        ax.set_ylabel("x site")
+
+    colorbar = fig.colorbar(image, ax=axes, shrink=0.82)
+    colorbar.set_label("Quanta at site n(x, y)")
+    fig.suptitle(f"One 2-D relaxation trajectory: {Lx} x {Ly}, Q = {Q:,}")
+
+    # Occupation-number distribution of the final 2-D microstate.
+    counts = np.bincount(boltz_array.ravel())
     values = np.arange(counts.size)
-    print("values = ", values)
-    print("")
 
-    # strong conservation of quanta
+    print("counts =", counts)
+    print("values =", values)
+    print()
+
+    # Strong conservation of quanta from the occupation distribution.
     assert (counts * values).sum() == Q
+    assert counts.sum() == M
 
-    # Remove trailing or internal zero-count values from the plot
     occupied = counts > 0
-    values = values[occupied]
-    counts = counts[occupied]
+    values_to_plot = values[occupied]
+    counts_to_plot = counts[occupied]
 
-    fig, ax = plt.subplots()
-    ax.plot(values, counts, marker="o", linestyle="None")
-    # use a logarithmic scale for the y-axis
+    fig2, ax = plt.subplots()
+    ax.plot(values_to_plot, counts_to_plot, marker="o", linestyle="None")
     ax.set_yscale("log")
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_xlabel("Number (n) of particles at a site")
     ax.set_ylabel("Number (N) of sites with n particles")
-    ax.set_title("Particle-count distribution")
+    ax.set_title("Final particle-count distribution")
 
-    plt.show()
-
-
+plt.show()

@@ -10,10 +10,10 @@ boltz_seed = 78781
 
 @njit
 def run_simulation_with_snapshots(
-                                  boltz_array,
-                                  snapshot_iterations,
-                                  seed=boltz_seed,
-                                  ):
+        boltz_array,
+        snapshot_iterations,
+        seed=boltz_seed,
+):
     """Run one trajectory and save the 2-D state at selected iterations."""
     np.random.seed(seed)
 
@@ -52,16 +52,23 @@ def run_simulation_with_snapshots(
 
 
 def initialize_boltzmann(Q, Lx, Ly):
-    """Distribute Q quanta approximately uniformly over an Lx by Ly array."""
+    """Distribute Q quanta approximately uniformly over an Lx by Ly array.
+
+    """
+    # Count the number of oscillators, M = Lx * Ly .
     M = Lx * Ly
+
+    # Divide the Q energy quanta among the M oscillators as evenly as possible.
     q, r = divmod(Q, M)
 
-    # Give every lattice point q quanta.
+    # Give every oscillator q quanta using np.full().
     boltzmann = np.full((Lx, Ly), q, dtype=np.int64)
 
     # Spread any remaining quanta approximately uniformly using a flat view.
     if r > 0:
+        # If there are r quanta left over, use ravel() to treat the 2-D lattice as a simple 1-D sequence of sites.
         flat = boltzmann.ravel()
+        # Choose r roughly evenly spaced sites and give each one additional quantum.
         indices = (np.arange(r) * M) // r
         flat[indices] += 1
 
@@ -111,9 +118,9 @@ for run in range(sim_runs):
     print("CHECK: Initial total Q:", boltz_array.sum())
 
     boltz_array, evolved_snapshots = run_simulation_with_snapshots(
-                                                                  boltz_array,
-                                                                   snapshot_iterations,
-                                                                   seed=run_seed,
+        boltz_array,
+        snapshot_iterations,
+        seed=run_seed,
     )
 
     # Include the exact initial condition as snapshot zero.

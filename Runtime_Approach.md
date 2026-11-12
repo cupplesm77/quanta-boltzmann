@@ -1,201 +1,182 @@
-The main slowdown is not the array itself. It is the 100 million-iteration Python loop, plus two 
-relatively expensive np.random.choice() calls in many iterations.
+# StatMech Simulation: Equilibration Development Plan
 
-For this sequential simulation, the biggest improvement will come from compiling the loop with Numba. 
-Numba’s @njit is specifically intended to compile numerical loops into machine code without running 
-each iteration through the Python interpreter.
+## Current Model
 
-Recommended optimized version
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
-from numba import njit
-from time import perf_counter
-the_seed = 78781
+For the present simulation:
 
+- Lattice: 25 x 25
+- Number of sites: M = 625
+- Total quanta: Q = 625
+- Mean occupancy: rho = Q/M = 1
 
-@njit
-def run_simulation(boltz_array, num_iterations, seed=the_seed):
-    np.random.seed(seed)
+The simulation begins from a deliberately low-entropy state: every site contains exactly one quantum. Random exchanges then drive the system toward statistical equilibrium.
 
-    array_length = boltz_array.size
+The snapshot sequence at
 
-    for _ in range(num_iterations):
+- 100
+- 1,000
+- 10,000
+- 100,000
+- 1,000,000
 
-        # Faster and clearer than np.random.choice(range(...))
-        index1 = np.random.randint(array_length)
+iterations clearly shows the initial relaxation. By eye, however, the 100,000- and 1,000,000-iteration configurations are difficult to distinguish statistically.
 
-        # A transfer is possible only if this site is occupied
-        if boltz_array[index1] > 0:
+This motivates a quantitative definition of equilibration.
 
-            index2 = np.random.randint(array_length)
+---
 
-            # Do nothing if both indices refer to the same site
-            if index2 != index1:
-                boltz_array[index1] -= 1
-                boltz_array[index2] += 1
+## 1. Measure Time in Sweeps
 
-    return boltz_array
+For a lattice containing M sites, define
 
+    1 sweep = M attempted updates
 
-length_boltz_array = 100_000
-num_iterations = 100 * 1_000_000
+For the present 25 x 25 lattice,
 
-# These values are counts, so use an integer dtype from the beginning
-boltz_array = np.ones(length_boltz_array, dtype=np.int64)
+    1 sweep = 625 iterations
 
-initial_total = boltz_array.sum()
+Thus the present snapshots correspond approximately to:
 
-start_time = perf_counter()
+| Iterations | Sweeps |
+|---:|---:|
+| 100 | 0.16 |
+| 1,000 | 1.6 |
+| 10,000 | 16 |
+| 100,000 | 160 |
+| 1,000,000 | 1,600 |
 
-boltz_array = run_simulation(
-    boltz_array,
-    num_iterations,
-    seed=the_seed
-)
+Using sweeps rather than raw iteration counts will make comparisons between different lattice sizes more meaningful.
 
-elapsed_time = perf_counter() - start_time
+---
 
-print(f"Runtime: {elapsed_time:.3f} seconds")
-print(f"Initial total: {initial_total}")
-print(f"Final total:   {boltz_array.sum()}")
-print(f"Minimum value: {boltz_array.min()}")
-print(f"Maximum value: {boltz_array.max()}")
+## 2. Equilibrium Is Statistical, Not Static
 
-Count the values efficiently
+An equilibrium configuration does **not** stop changing.
 
-# Since all the values are nonnegative integers, np.bincount() is a natural replacement for 
-np.unique(..., return_counts=True):
+Individual lattice occupancies continue to fluctuate. What becomes stationary are the statistical properties of the system.
 
-counts = np.bincount(boltz_array)
+Therefore:
 
-# Integer population values represented by the positions in counts
-values = np.arange(counts.size)
+> **Equilibrium means stationary statistics, not a stationary picture.**
 
-# Optional: remove trailing or internal zero-count values from the plot
-occupied = counts > 0
-values = values[occupied]
-counts = counts[occupied]
+Visual comparison of lattice snapshots is useful for intuition but is not a sufficient test for equilibrium.
 
+---
 
-Then plot:
+## 3. Track the Occupancy Distribution
 
-fig, ax = plt.subplots()
+Define
 
-ax.plot(values, counts, marker="o")
+    p_n(t) = N_n(t) / M
 
-ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-ax.set_xlabel("Number of particles at a site")
-ax.set_ylabel("Number of sites")
-ax.set_title("Particle-count distribution")
+where N_n(t) is the number of sites containing n quanta at time t.
 
-plt.show()
+For the present system,
 
-Why this should be much faster
-1. Replace np.random.choice(idx)
+    rho = 1
 
-You currently have:
+and the large-system equilibrium prediction is the geometric distribution
 
-idx = range(len(botz_array))
-random_index1 = np.random.choice(idx)
+    p_n(eq) = [1 / (1 + rho)] * [rho / (1 + rho)]^n
 
+For rho = 1, this reduces to
 
-But you only need a uniformly distributed integer index. The direct operation is:
+    p_n(eq) = 1 / 2^(n+1)
 
-random_index1 = np.random.randint(length_boltz_array)
+Future development should compare the simulated p_n(t) with this theoretical prediction.
 
+---
 
-Outside Numba, the modern NumPy equivalent is:
+## 4. Define a Distance From Equilibrium
 
-rng = np.random.default_rng()
-random_index1 = rng.integers(length_boltz_array)
+A useful single-number measure is the total variation distance
 
+    D(t) = (1/2) * sum_n |p_n(t) - p_n(eq)|
 
-Generator.integers(high) draws an integer from zero, inclusive, to high, exclusive.
+During relaxation, D(t) should generally decrease.
 
-2. Eliminate operations that do nothing
+At equilibrium it will not remain exactly zero because the finite lattice continues to fluctuate. Instead, it should reach a statistically stationary fluctuation level.
 
-These statements can simply be removed:
+Plotting D(t) versus time, preferably on a logarithmic time scale, should provide a quantitative picture of equilibration.
 
-botz_array[random_index2] += 0
-botz_array[random_index1] += 0
+---
 
+## 5. Test Several Initial Conditions
 
-They do not alter the array, but they still require indexing and assignment.
+Eventually repeat the experiment using very different starting configurations, for example:
 
-Your logic can be reduced to:
+1. Uniform distribution
+2. Highly concentrated distribution
+3. Random distribution
+4. Spatially clustered distribution
 
-if boltz_array[index1] > 0:
-    index2 = ...
-    if index2 != index1:
-        boltz_array[index1] -= 1
-        boltz_array[index2] += 1
+If these different initial states all evolve toward the same equilibrium statistics, this provides strong evidence that the simulation has lost memory of its initial condition.
 
-3. Use integer storage from the beginning
+---
 
-You currently have:
+## 6. Later: Measure Autocorrelation
 
-botz_array = np.ones(length_boltz_array)
+Two questions must eventually be distinguished:
 
+1. **Equilibration time:** How long should the initial transient ("burn-in") be discarded?
+2. **Sampling interval:** Once equilibrium has been reached, how widely separated should measurements be to obtain substantially independent samples?
 
-By default, that normally creates floating-point values. Since these are particle counts, create integers 
-directly:
+The second question requires investigation of autocorrelation times.
 
-boltz_array = np.ones(
-    length_boltz_array,
-    dtype=np.int64
-)
+---
 
+## 7. Investigate Lattice-Size Scaling
 
-Then you no longer need:
+The number of iterations required for equilibration should not be assumed to depend only on the number of lattice sites.
 
-unq = unique.astype(int)
+Future experiments should systematically vary lattice size and measure equilibration in sweeps.
 
-4. Compile the loop
+This will allow the simulation itself to reveal how relaxation time scales with system size for the particular update rule being used.
 
-Normal NumPy speedups often come from replacing loops with vectorized array operations. This particular 
-loop is difficult to vectorize correctly because iteration j+1j+1 depends on changes made during iteration jj.
+---
 
-For example, generating 100 million index pairs and applying them all simultaneously would not automatically 
-reproduce the same process. Repeated indices, empty source sites, and the ordering of transfers all matter.
+## Immediate Next Development Steps
 
-This is exactly the kind of case where retaining the loop but compiling it with Numba is appropriate. Numba’s 
-documentation notes that loops work well under @njit, while the same loops can be much slower in ordinary Python.
+When simulation development resumes:
 
-Important first-run detail
+1. Compute p_n(t) at selected times.
+2. Compare p_n(t) with the predicted geometric equilibrium distribution.
+3. Calculate and plot D(t).
+4. Estimate an equilibration/burn-in time from the stationary region of D(t).
+5. Repeat from different initial conditions.
+6. Investigate autocorrelation.
+7. Repeat for different lattice sizes and study scaling.
 
-The first call:
+---
 
-run_simulation(...)
+## Current Stopping Point
 
+The simulation has reached a useful stage:
 
-includes Numba’s compilation overhead. Subsequent calls using the same argument types reuse the compiled version.
+- Low-to-high entropy relaxation is visually evident.
+- The expected equilibrium occupancy distribution is known analytically.
+- The limitations of judging equilibrium from snapshots alone are understood.
+- A quantitative plan for determining equilibration has been established.
 
-For proper timing, warm it up first with a tiny simulation:
+Simulation development can therefore pause here.
 
-warmup = np.ones(10, dtype=np.int64)
-run_simulation(warmup, 10)
+The next priority is to work systematically through the previously developed StatMech exercises, using them to strengthen intuition about multiplicity, probability, equilibrium, fluctuations, and the emergence of the geometric occupancy distribution.
 
+The simulation can then be extended naturally as those concepts are developed.
 
-Then time the real run:
+ASCII convention going forward
 
-start_time = perf_counter()
-run_simulation(boltz_array, num_iterations)
-elapsed_time = perf_counter() - start_time
+For this StatMech work, I think this is a good convention for our working Markdown:
 
-A useful correctness check
+rho = Q/M
+p_n
+p_n(t)
+p_n(eq)
+p_n(eq) = [1/(1+rho)] * [rho/(1+rho)]^n
+D(t) = (1/2) * sum_n |p_n(t) - p_n(eq)|
+M = Lx * Ly
 
-Every successful move subtracts one from one site and adds one to another. Therefore, the total should 
-remain constant:
 
-assert boltz_array.sum() == length_boltz_array
-assert boltz_array.min() >= 0
+That should keep the notes immediately readable both as raw Markdown and when rendered, while still making the mathematical meaning unambiguous.
 
-
-Those two assertions verify:
-
-Particle number is conserved.
-No site has gone below zero.
-
-One small naming correction would also help readability: change botz_array to boltz_array. The optimized 
-code preserves the sequential dynamics while removing unnecessary work and compiling the expensive loop.
+The substance is unchanged; the main change is replacing display LaTeX with compact ASCII notation suitable for your simulation development notes.

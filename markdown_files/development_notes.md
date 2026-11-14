@@ -186,3 +186,33 @@ mathematical meaning unambiguous.
 
 The substance is unchanged; the main change is replacing display LaTeX with compact ASCII notation suitable for 
 your simulation development notes.
+
+
+# Coming Up:
+Future work: early-time shape of D(t)
+
+The main suggestion is to determine the functional form of the rapid initial relaxation, rather than assuming in advance that D(t) is a simple exponential.
+
+The current plot suggests two stages:
+
+A very rapid initial drop from the special ordered state, D(0)=0.75D
+A slower tail as the occupation distribution approaches the geometric equilibrium distribution.
+
+For future investigation:
+
+Record D(t)D on a finer early-time grid, ideally at fractions of a sweep as well as whole sweeps.
+Fit and compare several candidate forms: 
+D(t)=Ae−t/τ, 
+D(t)=Ae−(t/τ)β 
+and possibly a sum of two exponentials, 
+D(t)=Ae−t/τ1 + Be−t/τ2 
+Use diagnostic plots:
+log D versus t for exponential decay;
+log[−log(D/A)]  versus log t for stretched-exponential behavior;
+residual plots to expose systematic deviations.
+Repeat independent runs and average D(t)D(t), especially once D(t)D(t) becomes comparable to finite-size fluctuations.
+Compare different lattice sizes to distinguish genuine relaxation dynamics from the finite-MM noise floor.
+
+A concise statement to preserve is:
+
+The early-time D(t) curve may contain more than one relaxation regime. The immediate loss of the highly ordered initial condition could produce a fast transient, followed by slower convergence toward the geometric equilibrium distribution. Future work should measure D(t) at sub-sweep resolution and test exponential, stretched-exponential, and multi-timescale models rather than assuming a single exponential decay.

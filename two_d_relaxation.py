@@ -217,15 +217,15 @@ def run_relaxation_history(boltz_array, total_sweeps, seed, rho):
 
 
 # Lattice geometry and conserved total
-Lx = 100
-Ly = 100
+Lx = 1000
+Ly = 1000
 M = Lx * Ly
 Q = M                         # density rho = Q/M = 1
 rho = Q / M
 
 # Each value is now an independent relaxation experiment.
 # num_sweeps = [1, 10, 100, 500, 1000, 2000, 5000]
-num_sweeps = [1, 10, 20, 30, 50, 100, 1000]
+num_sweeps = [1, 10, 20, 30, 40, 50, 100]
 
 boltz_array0 = initialize_boltzmann(Q, Lx, Ly)
 assert boltz_array0.shape == (Lx, Ly)

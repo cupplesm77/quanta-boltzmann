@@ -153,16 +153,53 @@ def initialize_boltzmann(Q, Lx, Ly):
     return boltzmann
 
 
+def equillibrium_dist(snapshots, rho):
+    """Calculate total-variation distance from geometric equilibrium.
+
+    One distance is returned for each lattice snapshot. The geometric tail
+    above the largest observed occupancy is included in the calculation.
+    """
+    if snapshots.ndim != 3:
+        raise ValueError("snapshots must have shape (N, Lx, Ly)")
+    if rho < 0:
+        raise ValueError("rho must be nonnegative")
+
+    distances = np.empty(snapshots.shape[0], dtype=np.float64)
+    geometric_ratio = rho / (1.0 + rho)
+    geometric_prefactor = 1.0 / (1.0 + rho)
+
+    for snapshot_index, state in enumerate(snapshots):
+        counts = np.bincount(state.ravel())
+        measured_probability = counts / state.size
+        occupancies = np.arange(counts.size)
+        equilibrium_probability = (
+            geometric_prefactor * geometric_ratio**occupancies
+        )
+
+        # The measured distribution is zero above its largest observed n.
+        equilibrium_tail = geometric_ratio**counts.size
+        distances[snapshot_index] = 0.5 * (
+            np.abs(measured_probability - equilibrium_probability).sum()
+            + equilibrium_tail
+        )
+
+    return distances
+
+
 # Lattice geometry and conserved total
-Lx = 25
-Ly = 25
+Lx = 100
+Ly = 100
 M = Lx * Ly
 Q = M                         # density rho = Q/M = 1
 
 million = 1_000_000
+# For a lattice containing M sites, define 1 sweep = M updates
+# num_sweeps = [1, 10, 100, 500, 1000, 2000, 5000]
+num_sweeps = [1, 10, 100, 500, 1000]
+snapshot_sequence = M * np.array(num_sweeps, dtype=np.int64)
 snapshot_iterations = np.array(
-                              [1_00, 0.001 * million, 0.01 * million, 0.1 * million, million],
-                               dtype=np.int64,
+    snapshot_sequence,
+    dtype=np.int64,
 )
 
 boltz_array0 = initialize_boltzmann(Q, Lx, Ly)
@@ -206,7 +243,16 @@ for run in range(sim_runs):
         (boltz_array0[np.newaxis, :, :], evolved_snapshots),
         axis=0,
     )
-    snapshot_labels = ["Initial"] + [f"{n:,} iterations" for n in snapshot_iterations]
+    # snapshot_labels = ["Initial"] + [f"{n:,} times" for n in snapshot_iterations]
+    snapshot_labels = ["Initial"] + [f"{n:,} sweeps" for n in num_sweeps]
+
+    # Capture D(t) for the initial state and every evolved snapshot.
+    snapshot_sweeps = np.concatenate(
+        (np.array([0], dtype=np.int64), np.asarray(num_sweeps, dtype=np.int64))
+    )
+    rho = Q / M
+    distance_data = equillibrium_dist(snapshots, rho)
+    print("Equilibrium distances D(t) =", distance_data)
 
     print()
     print("CHECK: Final top-left 2 x 5 block:")
@@ -289,5 +335,15 @@ for run in range(sim_runs):
     ax.set_xlabel("Number (n) of particles at a site")
     ax.set_ylabel("Number (N) of sites with n particles")
     ax.set_title("Final particle-count distribution")
+
+    # Plot D(t) for every recorded snapshot.
+    fig3, ax3 = plt.subplots()
+    ax3.plot(snapshot_sweeps, distance_data, marker="o")
+    # symlog retains the initial t = 0 point and is logarithmic thereafter.
+    ax3.set_xscale("symlog", linthresh=1)
+    ax3.set_xlabel("Time (sweeps)")
+    ax3.set_ylabel("Total variation distance D(t)")
+    ax3.set_title("Relaxation toward geometric equilibrium")
+    ax3.grid(True, which="both", alpha=0.3)
 
 plt.show()

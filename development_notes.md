@@ -1,8 +1,8 @@
 # StatMech Simulation: Equilibration Development Plan
 
-## Current Model
+## Current Model Example
 
-For the present simulation:
+As a current example the simulation:
 
 - Lattice: 25 x 25
 - Number of sites: M = 625
@@ -11,13 +11,15 @@ For the present simulation:
 
 The simulation begins from a deliberately low-entropy state: every site contains exactly one quantum. Random exchanges then drive the system toward statistical equilibrium.
 
-The snapshot sequence at
+An example snapshot sequence at
 
-- 100
-- 1,000
-- 10,000
-- 100,000
-- 1,000,000
+- 100            Get started
+- M              1 Sweep
+- 10 x M         10 Sweeps
+- 100 M          100 Sweeps
+- 1_000 x M      1000 Sweeps
+- 1_500 x M      1500 Sweeps
+- 2_000 x M      2000 Sweeps
 
 iterations clearly shows the initial relaxation. By eye, however, the 100,000- and 1,000,000-iteration configurations are difficult to distinguish statistically.
 
@@ -35,15 +37,15 @@ For the present 25 x 25 lattice,
 
     1 sweep = 625 iterations
 
-Thus the present snapshots correspond approximately to:
+Thus as an example, snapshots correspond approximately to:
 
 | Iterations | Sweeps |
 |---:|---:|
 | 100 | 0.16 |
-| 1,000 | 1.6 |
-| 10,000 | 16 |
-| 100,000 | 160 |
-| 1,000,000 | 1,600 |
+| 625 | 1.0 |
+| 6250 | 10 |
+| 62500 | 100 |
+| 625000 | 1,000 |
 
 Using sweeps rather than raw iteration counts will make comparisons between different lattice sizes more meaningful.
 

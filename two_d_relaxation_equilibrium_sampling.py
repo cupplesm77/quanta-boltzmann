@@ -1,4 +1,30 @@
-# Statistical nature of the Boltzmann distribution on a 2-D lattice
+"""Simulate relaxation and equilibrium fluctuations on a 2-D Einstein solid.
+
+The lattice contains ``M = Lx * Ly`` sites and a conserved total of ``Q``
+discrete energy quanta. A Monte Carlo update selects a donor site uniformly;
+when the donor is occupied, one quantum is transferred to a uniformly selected
+receiver. Donor and receiver may be anywhere on the lattice, so the model has
+global (mean-field) rather than nearest-neighbor exchange.
+
+The script performs two complementary experiments:
+
+1. Independent relaxation runs of several durations, recording the
+   total-variation distance D(t) after every sweep.
+2. One long equilibrium run, recording occupation-bin counts at fixed sweep
+   intervals for later fluctuation and autocorrelation analysis.
+
+Raw equilibrium observations are written to ``equilibrium_bin_counts.csv``.
+Statistical analysis is intentionally kept outside this simulation so these
+results can be reanalyzed without repeating the expensive Monte Carlo run.
+
+Notes
+-----
+A sweep is defined as ``M`` attempted single-quantum transfers. Random seeds
+are fixed for reproducibility. The primary numerical kernels use Numba's
+``@njit`` decorator and therefore incur compilation overhead on their first
+call in a Python process.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
@@ -154,7 +180,30 @@ def initialize_boltzmann(Q, Lx, Ly):
 
 
 def equillibrium_dist(boltz_array, rho):
-    """Return total-variation distance from geometric equilibrium."""
+    """Calculate total-variation distance from geometric equilibrium.
+
+    Parameters
+    ----------
+    boltz_array : numpy.ndarray
+        Integer lattice whose entries are site occupation numbers. The array is
+        read only and may have any shape.
+    rho : float
+        Mean occupation ``Q / M``. It determines the equilibrium geometric
+        distribution ``p_n = (1 / (1 + rho)) * (rho / (1 + rho))**n``.
+
+    Returns
+    -------
+    float
+        Total-variation distance between the measured occupation-frequency
+        distribution and the infinite-support geometric distribution. The
+        exact theoretical tail above the largest observed occupation is
+        included in the result.
+
+    Notes
+    -----
+    The historical function name contains ``equillibrium``. It is retained to
+    avoid changing existing calls and saved study material.
+    """
     counts = np.bincount(boltz_array.ravel())
     p_measured = counts / boltz_array.size
     n = np.arange(counts.size)
@@ -169,7 +218,37 @@ def equillibrium_dist(boltz_array, rho):
 
 @njit
 def run_relaxation_history(boltz_array, total_sweeps, seed, rho):
-    """Run one independent experiment and record D(t) after every sweep."""
+    """Run one relaxation experiment and record D(t) after every sweep.
+
+    Parameters
+    ----------
+    boltz_array : numpy.ndarray
+        Initial integer lattice. It is modified in place and returned in its
+        final state.
+    total_sweeps : int
+        Number of sweeps to simulate. One sweep equals one attempted update per
+        lattice site, or ``boltz_array.size`` attempted transfers.
+    seed : int
+        Random-number seed for this independent trajectory.
+    rho : float
+        Conserved mean occupation ``Q / M`` used to construct the theoretical
+        geometric equilibrium distribution.
+
+    Returns
+    -------
+    boltz_array : numpy.ndarray
+        Final lattice microstate after ``total_sweeps`` sweeps.
+    distances : numpy.ndarray
+        One-dimensional float array of length ``total_sweeps + 1``. Element 0
+        is D(0); element ``s`` is the distance after sweep ``s``.
+
+    Notes
+    -----
+    The distance calculation is written explicitly inside this Numba kernel.
+    Calling the separate Python helper would prevent the complete time-critical
+    loop from remaining straightforwardly JIT compiled.
+    """
+    # Seed inside the compiled routine so a run is reproducible in isolation.
     np.random.seed(seed)
     flat = boltz_array.ravel()
     M = flat.size
@@ -226,21 +305,51 @@ def run_equilibrium_sampling(
         rho,
         max_recorded_n,
 ):
-    """Equilibrate one lattice, then record occupation counts during equilibrium.
+    """Equilibrate one lattice and sample occupation counts at fixed intervals.
 
-    The relaxation and measurement stages deliberately remain separate from the
-    later statistical analysis.  After ``equilibration_sweeps`` have elapsed,
-    the same isolated lattice continues evolving.  Every
-    ``sample_interval_sweeps`` sweeps, this routine records:
+    The relaxation transient is not stored. After the chosen equilibration
+    period, the same isolated lattice keeps evolving and is measured every
+    ``sample_interval_sweeps`` sweeps. Each measurement records the absolute
+    sweep number, D(t), counts N_0 through N_max, and an overflow count.
 
-        sweep number, D(t), N_0, N_1, ..., N_max, overflow count
+    Parameters
+    ----------
+    boltz_array : numpy.ndarray
+        Initial integer lattice. It is modified in place.
+    equilibration_sweeps : int
+        Number of complete sweeps discarded before equilibrium sampling begins.
+    sample_interval_sweeps : int
+        Sweep spacing between successive saved measurements.
+    num_samples : int
+        Number of equilibrium measurements to collect.
+    seed : int
+        Random-number seed for the complete equilibration-and-sampling run.
+    rho : float
+        Mean occupation ``Q / M`` used for the theoretical equilibrium law.
+    max_recorded_n : int
+        Largest occupation with its own saved count column. Sites above this
+        value are included in the separate overflow count.
 
-    The raw history can therefore be inspected later for autocorrelation and
-    Poisson/non-Poisson fluctuations without rerunning the physical simulation.
+    Returns
+    -------
+    boltz_array : numpy.ndarray
+        Final lattice microstate.
+    sweep_numbers : numpy.ndarray
+        Integer sweep number associated with each saved measurement.
+    distances : numpy.ndarray
+        Total-variation distance D(t) at each saved measurement.
+    occupation_history : numpy.ndarray
+        Integer array of shape ``(num_samples, max_recorded_n + 1)``. Entry
+        ``[i, n]`` is the number of sites with occupation ``n`` in sample ``i``.
+    overflow_history : numpy.ndarray
+        Number of sites above ``max_recorded_n`` in each sample.
 
-    ``overflow count`` is the number of sites whose occupation exceeds
-    ``max_recorded_n``.  It should normally be zero; keeping it explicitly
-    prevents silent loss of sites if an unexpectedly large occupation occurs.
+    Notes
+    -----
+    D(t) is calculated from the complete observed occupation range, independent
+    of ``max_recorded_n``. Thus the storage limit cannot truncate the distance
+    calculation. Keeping an explicit overflow count also prevents silent loss
+    of sites when an unexpectedly large occupation occurs.
     """
     np.random.seed(seed)
     flat = boltz_array.ravel()
@@ -309,7 +418,11 @@ def run_equilibrium_sampling(
         overflow_history,
     )
 
-# Lattice geometry and conserved total
+# =============================================================================
+# User-adjustable experiment configuration
+# =============================================================================
+# Lattice geometry and conserved total. Large defaults are intentional: they
+# suppress finite-size noise but require substantial memory and runtime.
 Lx = 1000
 Ly = 1000
 M = Lx * Ly
@@ -320,6 +433,8 @@ rho = Q / M
 # num_sweeps = [1, 10, 100, 500, 1000, 2000, 5000]
 num_sweeps = [1, 10, 20, 30, 40, 50, 100]
 
+# Construct one pristine reference state. Every independent relaxation case
+# receives a copy so case duration, rather than inherited history, is compared.
 boltz_array0 = initialize_boltzmann(Q, Lx, Ly)
 assert boltz_array0.shape == (Lx, Ly)
 assert boltz_array0.size == M
@@ -329,6 +444,7 @@ initial_total = boltz_array0.sum()
 warmup = np.ones((2, 5), dtype=np.int64)
 _ = run_relaxation_history(warmup, 1, boltz_seed, 1.0)
 
+# Results remain in memory for plotting after all independent runs complete.
 final_snapshots = []
 distance_histories = []
 run_times = []
@@ -446,7 +562,11 @@ print(f"Highest saved n:      {highest_recorded_n}")
 print(f"Maximum overflow:     {equilibrium_overflow.max():,} site(s)")
 print("Data file:            equilibrium_bin_counts.csv")
 
-# Graphics
+# =============================================================================
+# Diagnostic graphics
+# =============================================================================
+# These plots are exploratory study aids rather than publication-formatted
+# figures. They display spatial relaxation, D(t), and the final count spectrum.
 # Include the pristine initial state before the independently evolved cases.
 snapshots = np.concatenate(
     (
@@ -460,6 +580,7 @@ snapshot_labels = ["Initial"] + [f"{n:,} sweeps" for n in num_sweeps]
 
 # Plot the initial state followed by the final spatial state
 # from every independent experiment.
+# Use one shared color scale so color has the same meaning in every panel.
 vmax = snapshots.max()
 fig, axes = plt.subplots(
     1,
@@ -504,6 +625,9 @@ fig2.suptitle("Evolution of relaxation toward equilibrium")
 boltz_array = snapshots[-1]
 counts = np.bincount(boltz_array.ravel())
 values = np.arange(counts.size)
+# sqrt(N) error bars provide a familiar Poisson counting-noise reference.
+# They are not, by themselves, a proof that equilibrium bin fluctuations are
+# Poisson; that question belongs to the separate time-series analysis.
 sigma_poisson = np.sqrt(counts)
 assert (counts * values).sum() == Q
 assert counts.sum() == M

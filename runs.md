@@ -214,3 +214,18 @@ sample_interval_sweeps = 10
 is validated and conservative for the present observables. There is no statistical reason to lengthen it. In fact, a shorter interval might still work, but the current setting provides clean independence without an excessive runtime cost.
 
 The captain’s second run has done exactly what we wanted: it converted the earlier qualitative equilibrium observation into a quantitatively defensible equilibrium sampling dataset.
+
+VERIFICATION COMPLETE
+Documentation Activity Complete
+Run Results Complete:
+HECK: Beginning equilibrium-fluctuation sampling experiment
+Equilibration period: 100 sweeps
+Sampling interval:    10 sweep(s)
+Samples requested:    500
+Sampling runtime:     86.507 seconds
+Samples written:      500
+Highest saved n:      28
+Maximum overflow:     0 site(s)
+Data file:            equilibrium_bin_counts.csv
+
+Process finished with exit code 0

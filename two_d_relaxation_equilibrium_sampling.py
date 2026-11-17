@@ -423,15 +423,15 @@ def run_equilibrium_sampling(
 # =============================================================================
 # Lattice geometry and conserved total. Large defaults are intentional: they
 # suppress finite-size noise but require substantial memory and runtime.
-Lx = 1000
-Ly = 1000
+Lx = 100
+Ly = 100
 M = Lx * Ly
 Q = M                         # density rho = Q/M = 1
 rho = Q / M
 
 # Each value is now an independent relaxation experiment.
 # num_sweeps = [1, 10, 100, 500, 1000, 2000, 5000]
-num_sweeps = [1, 10, 20, 30, 40, 50, 100]
+num_sweeps = [1, 10, 20, 30, 40, 50, 70]
 
 # Construct one pristine reference state. Every independent relaxation case
 # receives a copy so case duration, rather than inherited history, is compared.
@@ -492,9 +492,9 @@ for case_index, total_sweeps in enumerate(num_sweeps):
 # These are intentionally plain, user-adjustable controls.  In particular,
 # sample_interval_sweeps can later be changed after we study autocorrelation.
 equilibration_sweeps = num_sweeps[-1]
-sample_interval_sweeps = 10
-num_equilibrium_samples = 500
-max_recorded_n = 64
+sample_interval_sweeps = 5
+num_equilibrium_samples = 300
+max_recorded_n = 26
 sampling_seed = boltz_seed + 1000
 
 equilibrium_array = boltz_array0.copy()
@@ -504,13 +504,23 @@ print(f"Equilibration period: {equilibration_sweeps:,} sweeps")
 print(f"Sampling interval:    {sample_interval_sweeps:,} sweep(s)")
 print(f"Samples requested:    {num_equilibrium_samples:,}")
 
+# start timer
 sampling_start = perf_counter()
+
+# run the equillibrium sampling routine
 (
-    equilibrium_array,
-    equilibrium_sample_sweeps,
-    equilibrium_sample_distances,
-    equilibrium_counts,
-    equilibrium_overflow,
+    # returns:
+    # boltz_array : numpy.ndarray
+    # sweep_numbers : numpy.ndarray
+    # distances : numpy.ndarray
+    # occupation_history : numpy.ndarray
+    #     Integer array of shape ``(num_samples, max_recorded_n + 1)``.
+    # overflow_history : numpy.ndarray
+    equilibrium_array,                  # Final lattice microstate.
+    equilibrium_sample_sweeps,          # Integer sweep number associated with each saved measurement.
+    equilibrium_sample_distances,       # Total-variation distance D(t) at each saved measurement.
+    equilibrium_counts,                 # Entry ``[i, n]`` is the number of sites with occupation ``n`` in sample ``i``
+    equilibrium_overflow,               # Number of sites above ``max_recorded_n`` in each sample.
 ) = run_equilibrium_sampling(
     equilibrium_array,
     equilibration_sweeps,
@@ -520,6 +530,7 @@ sampling_start = perf_counter()
     rho,
     max_recorded_n,
 )
+# end timer
 sampling_elapsed = perf_counter() - sampling_start
 
 # Conservation checks are kept close to data generation so a corrupted run is

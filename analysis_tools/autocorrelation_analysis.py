@@ -623,24 +623,33 @@ def plot_autocorrelations(
     sample_interval_sweeps: float,
 ) -> None:
     """
-    Plot the normalized autocorrelation functions.
+    Plot autocorrelation functions for selected simulation quantities.
 
-    One plot is created for each analyzed quantity.
-
-    The horizontal axis is expressed in simulation sweeps rather than
-    recorded-sample number so that the plot corresponds directly to the
-    simulation's time unit.
-
-    Parameters
-    ----------
-    results : list of dict
-        Analysis results returned by ``analyze_quantity``.
-
-    sample_interval_sweeps : float
-        Number of simulation sweeps between recorded samples.
+    Numerical autocorrelation statistics may be calculated for every
+    recorded quantity, but plots are restricted to D_t and the principal
+    low-order population bins. This avoids generating a large number of
+    figures for sparsely populated high-order bins.
     """
 
-    for result in results:
+    plot_columns = {
+        "D_t",
+        "N_0",
+        "N_1",
+        "N_2",
+        "N_3",
+        "N_4",
+        "N_5",
+        "N_6",
+    }
+
+    # construct the plot list
+    results_to_plot = [
+        result
+        for result in results
+        if result["column"] in plot_columns
+    ]
+
+    for result in results_to_plot:
 
         acf = result["acf"]
 
